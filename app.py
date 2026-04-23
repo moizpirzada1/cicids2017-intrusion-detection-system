@@ -4,95 +4,64 @@ import numpy as np
 import joblib
 
 # ===============================
-# PAGE CONFIG
-# ===============================
-st.set_page_config(
-    page_title="CICIDS2017 IDS",
-    page_icon="🛡️",
-    layout="wide"
-)
-
-# ===============================
-# LOAD MODEL & SCALER
+# LOAD MODEL + SCALER + COLUMNS
 # ===============================
 model = joblib.load("random_forest_cicids2017.pkl")
 scaler = joblib.load("scaler_cicids2017.pkl")
+feature_columns = joblib.load("feature_columns.pkl")
 
 # ===============================
-# TITLE
+# APP UI
 # ===============================
-st.title("🛡️ Network Intrusion Detection System")
-st.markdown("Machine Learning based IDS using CICIDS2017 + Random Forest")
+st.set_page_config(page_title="CICIDS2017 IDS", layout="wide")
 
-# ===============================
-# SIDEBAR
-# ===============================
-option = st.sidebar.radio("Select Mode:", ["Upload CSV", "Manual Test"])
+st.title("🛡️ Intrusion Detection System (CICIDS2017)")
 
-# ===============================
-# CSV MODE
-# ===============================
-if option == "Upload CSV":
-    file = st.file_uploader("Upload your CSV file", type=["csv"])
+file = st.file_uploader("Upload CSV File", type=["csv"])
 
-    if file is not None:
-        df = pd.read_csv(file)
+if file is not None:
 
-        st.write("### Input Data Preview")
-        st.dataframe(df.head())
+    df = pd.read_csv(file)
 
-        # CLEAN DATA
-        df = df.replace([np.inf, -np.inf], np.nan)
-        df = df.fillna(0)
+    st.write("### Raw Data")
+    st.dataframe(df.head())
 
-        # ENCODE OBJECT COLUMNS
-        for col in df.columns:
-            if df[col].dtype == 'object':
-                df[col] = df[col].astype(str).factorize()[0]
+    # CLEAN COLUMN NAMES
+    df.columns = df.columns.str.strip()
 
-        # SCALE DATA
-        X = scaler.transform(df)
+    # DROP LABEL IF EXISTS
+    if "Label" in df.columns:
+        df = df.drop(columns=["Label"])
 
-        # PREDICTION
-        preds = model.predict(X)
+    # HANDLE INF/NAN
+    df = df.replace([np.inf, -np.inf], np.nan).fillna(0)
 
-        df["Prediction"] = np.where(preds == 0, "BENIGN", "ATTACK")
+    # ENCODE OBJECT COLUMNS
+    for col in df.columns:
+        if df[col].dtype == "object":
+            df[col] = df[col].astype(str).factorize()[0]
 
-        st.write("### Prediction Results")
-        st.dataframe(df)
+    # ===============================
+    # ALIGN FEATURES (VERY IMPORTANT FIX)
+    # ===============================
 
-        st.success("Prediction Completed ✔")
+    # add missing columns
+    for col in feature_columns:
+        if col not in df.columns:
+            df[col] = 0
 
-# ===============================
-# MANUAL TEST MODE
-# ===============================
-else:
-    st.write("### Manual Input Test")
+    # keep only training columns in correct order
+    df = df[feature_columns]
 
-    col1, col2, col3 = st.columns(3)
+    # ===============================
+    # SCALE + PREDICT
+    # ===============================
+    X = scaler.transform(df)
+    preds = model.predict(X)
 
-    with col1:
-        f1 = st.number_input("Feature 1", 0.0)
-        f2 = st.number_input("Feature 2", 0.0)
-        f3 = st.number_input("Feature 3", 0.0)
+    df["Prediction"] = np.where(preds == 0, "BENIGN", "ATTACK")
 
-    with col2:
-        f4 = st.number_input("Feature 4", 0.0)
-        f5 = st.number_input("Feature 5", 0.0)
-        f6 = st.number_input("Feature 6", 0.0)
+    st.write("### Results")
+    st.dataframe(df)
 
-    with col3:
-        f7 = st.number_input("Feature 7", 0.0)
-        f8 = st.number_input("Feature 8", 0.0)
-        f9 = st.number_input("Feature 9", 0.0)
-
-    if st.button("Predict"):
-        sample = np.array([[f1, f2, f3, f4, f5, f6, f7, f8, f9]])
-
-        sample = scaler.transform(sample)
-        result = model.predict(sample)[0]
-
-        if result == 0:
-            st.success("✔ BENIGN (Normal Traffic)")
-        else:
-            st.error("🚨 ATTACK DETECTED")
+    st.success("Prediction Completed ✔")
