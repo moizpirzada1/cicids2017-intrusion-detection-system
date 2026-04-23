@@ -4,7 +4,7 @@ import numpy as np
 import joblib
 
 # ===============================
-# LOAD MODELS & FILES
+# LOAD MODELS
 # ===============================
 model = joblib.load("random_forest_cicids2017.pkl")
 scaler = joblib.load("scaler_cicids2017.pkl")
@@ -20,65 +20,95 @@ st.set_page_config(
 )
 
 st.title("🛡️ CICIDS2017 Intrusion Detection System")
-st.markdown("Upload network traffic CSV for **BENIGN vs ATTACK** detection")
 
 # ===============================
-# FILE UPLOAD
+# MODE SELECTION
 # ===============================
-file = st.file_uploader("Upload CSV File", type=["csv"])
+mode = st.sidebar.radio("Select Mode", ["📁 CSV Upload", "✍️ Manual Test"])
 
-if file is not None:
+# =========================================================
+# 1. CSV MODE
+# =========================================================
+if mode == "📁 CSV Upload":
 
-    df = pd.read_csv(file)
+    file = st.file_uploader("Upload CICIDS2017 CSV", type=["csv"])
 
-    st.write("### Original Data")
-    st.dataframe(df.head())
+    if file is not None:
 
-    # ===============================
-    # CLEAN DATA
-    # ===============================
-    df.columns = df.columns.str.strip()
+        df = pd.read_csv(file)
 
-    # DROP LABEL IF EXISTS
-    if "Label" in df.columns:
-        df = df.drop(columns=["Label"])
+        st.write("### Raw Data")
+        st.dataframe(df.head())
 
-    # HANDLE INF & NAN
-    df = df.replace([np.inf, -np.inf], np.nan)
-    df = df.fillna(0)
+        # CLEAN
+        df.columns = df.columns.str.strip()
 
-    # ENCODE OBJECT COLUMNS
-    for col in df.columns:
-        if df[col].dtype == "object":
-            df[col] = df[col].astype(str).factorize()[0]
+        if "Label" in df.columns:
+            df = df.drop(columns=["Label"])
 
-    # ===============================
-    # ALIGN COLUMNS WITH TRAINING DATA
-    # ===============================
-    # ADD MISSING COLUMNS
-    for col in feature_columns:
-        if col not in df.columns:
-            df[col] = 0
+        df = df.replace([np.inf, -np.inf], np.nan).fillna(0)
 
-    # KEEP SAME ORDER
-    df = df[feature_columns]
+        # ENCODE
+        for col in df.columns:
+            if df[col].dtype == "object":
+                df[col] = df[col].astype(str).factorize()[0]
 
-    # ===============================
-    # SCALE DATA
-    # ===============================
-    X = scaler.transform(df)
+        # ALIGN FEATURES
+        for col in feature_columns:
+            if col not in df.columns:
+                df[col] = 0
 
-    # ===============================
-    # PREDICTION
-    # ===============================
-    preds = model.predict(X)
+        df = df[feature_columns]
 
-    df["Prediction"] = np.where(preds == 0, "BENIGN", "ATTACK")
+        # SCALE + PREDICT
+        X = scaler.transform(df)
+        preds = model.predict(X)
 
-    # ===============================
-    # OUTPUT
-    # ===============================
-    st.write("### Prediction Results")
-    st.dataframe(df)
+        df["Prediction"] = np.where(preds == 0, "BENIGN", "ATTACK")
 
-    st.success("Analysis Completed ✔")
+        st.write("### Results")
+        st.dataframe(df)
+
+        st.success("Prediction Completed ✔")
+
+# =========================================================
+# 2. MANUAL MODE
+# =========================================================
+else:
+
+    st.write("### Enter Feature Values Manually")
+
+    st.info("⚠ You must enter values similar to CICIDS2017 dataset scale")
+
+    inputs = {}
+
+    # Take first 8 features for demo (you can expand later)
+    selected_features = feature_columns[:8]
+
+    cols = st.columns(2)
+
+    for i, col_name in enumerate(selected_features):
+
+        with cols[i % 2]:
+            inputs[col_name] = st.number_input(col_name, value=0.0)
+
+    if st.button("Predict Attack / Normal"):
+
+        # Convert to DataFrame
+        input_df = pd.DataFrame([inputs])
+
+        # Add missing columns
+        for col in feature_columns:
+            if col not in input_df.columns:
+                input_df[col] = 0
+
+        input_df = input_df[feature_columns]
+
+        # Scale + Predict
+        X = scaler.transform(input_df)
+        pred = model.predict(X)[0]
+
+        if pred == 0:
+            st.success("✔ BENIGN (Normal Traffic)")
+        else:
+            st.error("🚨 ATTACK DETECTED")
